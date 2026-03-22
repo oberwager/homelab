@@ -1,0 +1,176 @@
+{
+  "uid": "workload-health",
+  "title": "Workload Health",
+  "tags": ["kubernetes", "workloads"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(kube_pod_info, namespace)",
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "multi": false,
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "table",
+      "title": "Deployment Status",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "kube_deployment_spec_replicas{namespace=~\"$namespace\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table",
+          "refId": "desired"
+        },
+        {
+          "expr": "kube_deployment_status_replicas_available{namespace=~\"$namespace\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table",
+          "refId": "available"
+        },
+        {
+          "expr": "kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\"}",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table",
+          "refId": "unavailable"
+        }
+      ],
+      "transformations": [
+        { "id": "seriesToColumns", "options": { "byField": "deployment" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time 1": true, "Time 2": true, "Time 3": true, "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "instance 1": true, "instance 2": true, "instance 3": true, "job 1": true, "job 2": true, "job 3": true, "namespace 2": true, "namespace 3": true },
+            "renameByName": { "namespace 1": "Namespace", "deployment": "Deployment", "Value #desired": "Desired", "Value #available": "Available", "Value #unavailable": "Unavailable" }
+          }
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Container CPU Usage by Pod",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{
+        "expr": "sum by (pod, namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m]))",
+        "legendFormat": "{{ namespace }}/{{ pod }}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Memory Usage by Pod",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{
+        "expr": "sum by (pod, namespace) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"})",
+        "legendFormat": "{{ namespace }}/{{ pod }}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Restarts",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [{
+        "expr": "increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\"}[1h]) > 0",
+        "legendFormat": "{{ namespace }}/{{ pod }}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Network Receive by Pod",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [{
+        "expr": "sort_desc(sum by (pod, namespace) (rate(container_network_receive_bytes_total{namespace=~\"$namespace\"}[5m])))",
+        "legendFormat": "{{ namespace }}/{{ pod }}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean"] }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Pod Status",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "kube_pod_status_phase{namespace=~\"$namespace\"} == 1",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Value": true, "__name__": true, "instance": true, "job": true, "uid": true },
+            "renameByName": { "namespace": "Namespace", "pod": "Pod", "phase": "Phase" }
+          }
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39
+}

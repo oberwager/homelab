@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kuma-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: "nginx"
+
+spec:
+  tls:
+    - hosts:
+        - uptime.lucas.tools
+      secretName: kuma-tls
+  rules:
+    - host: uptime.lucas.tools
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kuma-service
+                port:
+                  name: web

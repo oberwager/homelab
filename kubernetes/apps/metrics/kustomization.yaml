@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+resources:
+  - 00-namespace.yaml
+  - prometheus.yaml
+  - prometheus-config.yaml
+  - prometheus-alert-rules.yaml
+  - grafana.yaml
+  - grafana-dashboard-provisioning.yaml
+  - alertmanager.yaml
+  - loki.yaml
+  - node-exporter.yaml
+  - kube-state-metrics.yaml
+  - alloy.yaml
+  - ingress.yaml
+  - external-secret.yaml
+configMapGenerator:
+  - name: grafana-dashboards
+    options:
+      disableNameSuffixHash: true
+    files:
+      - dashboards/argus.json
+      - dashboards/cluster-overview.json
+      - dashboards/cronjob-monitor.json
+      - dashboards/ingress-certs.json
+      - dashboards/logs-explorer.json
+      - dashboards/workload-health.json

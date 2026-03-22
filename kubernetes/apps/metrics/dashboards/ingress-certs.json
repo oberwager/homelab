@@ -1,0 +1,187 @@
+{
+  "uid": "ingress-certs",
+  "title": "Ingress & Certificates",
+  "tags": ["kubernetes", "ingress", "certificates"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "table",
+      "title": "Certificate Expiry",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400",
+        "legendFormat": "",
+        "instant": true,
+        "format": "table"
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true, "issuer_group": true, "issuer_kind": true },
+            "renameByName": { "namespace": "Namespace", "name": "Certificate", "issuer_name": "Issuer", "Value": "Days Until Expiry" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Days Until Expiry" },
+            "properties": [
+              { "id": "decimals", "value": 0 },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": null },
+                    { "color": "yellow", "value": 14 },
+                    { "color": "green", "value": 30 }
+                  ]
+                }
+              },
+              { "id": "custom.displayMode", "value": "color-background" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingress Request Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "sum by (host) (rate(nginx_ingress_controller_requests[5m]))",
+          "legendFormat": "{{ host }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingress Error Rate (4xx + 5xx)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "sum by (host) (rate(nginx_ingress_controller_requests{status=~\"4..\"}[5m]))",
+          "legendFormat": "{{ host }} 4xx"
+        },
+        {
+          "expr": "sum by (host) (rate(nginx_ingress_controller_requests{status=~\"5..\"}[5m]))",
+          "legendFormat": "{{ host }} 5xx"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingress Response Time (p50 / p95 / p99)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, host) (rate(nginx_ingress_controller_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ host }} p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, host) (rate(nginx_ingress_controller_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ host }} p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, host) (rate(nginx_ingress_controller_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ host }} p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingress Connections",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "nginx_ingress_controller_nginx_process_connections",
+          "legendFormat": "{{ state }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Certificates Not Ready",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 22 },
+      "targets": [{
+        "expr": "count(certmanager_certificate_ready_status{condition=\"False\"} == 1) or vector(0)",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Certificates Ready",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 22 },
+      "targets": [{
+        "expr": "count(certmanager_certificate_ready_status{condition=\"True\"} == 1)",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39
+}

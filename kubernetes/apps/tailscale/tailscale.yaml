@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tailscale
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tailscale
+  namespace: tailscale
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tailscale
+  namespace: tailscale
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["tailscale-state"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tailscale
+  namespace: tailscale
+subjects:
+  - kind: ServiceAccount
+    name: tailscale
+    namespace: tailscale
+roleRef:
+  kind: Role
+  name: tailscale
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subnet-router
+  namespace: tailscale
+  labels:
+    app: tailscale-subnet-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tailscale-subnet-router
+  template:
+    metadata:
+      labels:
+        app: tailscale-subnet-router
+    spec:
+      serviceAccountName: tailscale
+      containers:
+        - name: tailscale
+          image: ghcr.io/tailscale/tailscale:latest
+          env:
+            # Persist state in a k8s secret so restarts don't re-register
+            - name: TS_KUBE_SECRET
+              value: "tailscale-state"
+            # Kernel networking (not userspace) - needed for subnet routing
+            - name: TS_USERSPACE
+              value: "false"
+            - name: TS_DEBUG_FIREWALL_MODE
+              value: "auto"
+            # Auth key from secret
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_ROUTES
+              value: "192.168.50.0/24,192.168.1.0/24,10.244.0.0/16,10.96.0.0/12"
+            - name: TS_HOSTNAME
+              value: "argus-subnet-router"
+            - name: TS_EXTRA_ARGS
+              value: "--accept-routes"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

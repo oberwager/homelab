@@ -1,0 +1,210 @@
+{
+  "uid": "cronjob-monitor",
+  "title": "CronJob Monitor",
+  "tags": ["kubernetes", "cronjobs"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Failed Jobs (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(kube_job_status_failed) or vector(0)",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Active Jobs",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "sum(kube_job_status_active) or vector(0)",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Succeeded Jobs (24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "sum(kube_job_status_succeeded)",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "CronJobs Total",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [{
+        "expr": "count(kube_cronjob_info)",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "CronJob Status",
+      "description": "Overview of all CronJobs with last schedule time and suspension status",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "kube_cronjob_info",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table",
+          "refId": "info"
+        },
+        {
+          "expr": "time() - kube_cronjob_status_last_schedule_time",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table",
+          "refId": "since_last"
+        },
+        {
+          "expr": "kube_cronjob_spec_suspend",
+          "legendFormat": "",
+          "instant": true,
+          "format": "table",
+          "refId": "suspended"
+        }
+      ],
+      "transformations": [
+        { "id": "seriesToColumns", "options": { "byField": "cronjob" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time 1": true, "Time 2": true, "Time 3": true, "__name__ 1": true, "__name__ 2": true, "__name__ 3": true, "instance 1": true, "instance 2": true, "instance 3": true, "job 1": true, "job 2": true, "job 3": true, "namespace 2": true, "namespace 3": true, "concurrency_policy": true, "uid": true, "schedule": true },
+            "renameByName": { "namespace 1": "Namespace", "cronjob": "CronJob", "Value #info": "Info", "Value #since_last": "Seconds Since Last Run", "Value #suspended": "Suspended" }
+          }
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Job Completions Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "expr": "sum by (job_name) (kube_job_status_succeeded)",
+          "legendFormat": "{{ job_name }} succeeded"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 0,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Job Failures Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        {
+          "expr": "sum by (job_name) (kube_job_status_failed) > 0",
+          "legendFormat": "{{ job_name }} failed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "color": { "fixedColor": "red", "mode": "fixed" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Job Duration (seconds)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "targets": [{
+        "expr": "kube_job_complete_time - kube_job_start_time > 0",
+        "legendFormat": "{{ job_name }}"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 6,
+            "fillOpacity": 0
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent Failed Jobs",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 26 },
+      "targets": [{
+        "expr": "kube_job_status_failed > 0",
+        "legendFormat": "",
+        "instant": true,
+        "format": "table"
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true, "uid": true, "condition": true, "status": true },
+            "renameByName": { "namespace": "Namespace", "job_name": "Job", "Value": "Failures" }
+          }
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39
+}
