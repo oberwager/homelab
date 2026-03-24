@@ -1248,6 +1248,10 @@
       "type": "row"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1327,13 +1331,17 @@
       "pluginVersion": "12.4.1",
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"hyperion\", pod=~\"postgres.*\", container!=\"POD\", container!=\"\"}[5m]))",
+          "editorMode": "code",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"data\", pod=~\"postgres.*\", container!=\"POD\", container!=\"\"}[5m]))",
           "legendFormat": "CPU (cores)",
+          "range": true,
           "refId": "A"
         },
         {
-          "expr": "sum(container_memory_working_set_bytes{namespace=\"hyperion\", pod=~\"postgres.*\", container!=\"POD\", container!=\"\"}) / 1024 / 1024",
+          "editorMode": "code",
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"data\", pod=~\"postgres.*\", container!=\"POD\", container!=\"\"}) / 1024 / 1024",
           "legendFormat": "Memory (Mi)",
+          "range": true,
           "refId": "B"
         }
       ],
@@ -1341,6 +1349,10 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1420,13 +1432,17 @@
       "pluginVersion": "12.4.1",
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"hyperion\", pod=~\"redis.*\", container!=\"POD\", container!=\"\"}[5m]))",
+          "editorMode": "code",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"trivio\", pod=~\"redis.*\", container!=\"POD\", container!=\"\"}[5m]))",
           "legendFormat": "CPU (cores)",
+          "range": true,
           "refId": "A"
         },
         {
-          "expr": "sum(container_memory_working_set_bytes{namespace=\"hyperion\", pod=~\"redis.*\", container!=\"POD\", container!=\"\"}) / 1024 / 1024",
+          "editorMode": "code",
+          "expr": "sum(container_memory_working_set_bytes{namespace=\"trivio\", pod=~\"redis.*\", container!=\"POD\", container!=\"\"}) / 1024 / 1024",
           "legendFormat": "Memory (Mi)",
+          "range": true,
           "refId": "B"
         }
       ],
@@ -1775,8 +1791,11 @@
       "pluginVersion": "12.4.1",
       "targets": [
         {
-          "expr": "sum by (namespace, pod) (count_over_time({namespace=~\"hyperion|photobooth-api|default\"} |~ \"(?i)error|panic|fatal|exception\" != \"level=info\" [5m]))",
+          "direction": "backward",
+          "editorMode": "code",
+          "expr": "sum by (namespace, pod) (count_over_time({namespace!~\"kube-system|monitoring\", namespace=~\".+\"} |~ \"(?i)error|panic|fatal|exception\" != \"level=info\" [5m]))",
           "legendFormat": "{{ namespace }}/{{ pod }}",
+          "queryType": "range",
           "refId": "A"
         }
       ],
@@ -1802,6 +1821,6 @@
   "timezone": "browser",
   "title": "Argus",
   "uid": "argus",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
