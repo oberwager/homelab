@@ -28,7 +28,7 @@ rules:
     resources: ["ingresses"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
-    resources: ["services", "configmaps", "persistentvolumeclaims"]
+    resources: ["services", "configmaps", "persistentvolumeclaims", "persistentvolumes"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
     resources: ["secrets"]
