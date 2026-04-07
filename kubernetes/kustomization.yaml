@@ -9,3 +9,4 @@ resources:
   - apps/kuma/
   - apps/postgres/
   - apps/tailscale/
+  - apps/local-path/
