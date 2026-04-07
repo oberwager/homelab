@@ -57,7 +57,7 @@ spec:
       serviceAccountName: tailscale
       containers:
         - name: tailscale
-          image: ghcr.io/tailscale/tailscale:latest
+          image: ghcr.io/tailscale/tailscale:v1.20.1
           env:
             # Persist state in a k8s secret so restarts don't re-register
             - name: TS_KUBE_SECRET

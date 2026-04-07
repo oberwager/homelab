@@ -1,39 +1,4 @@
 # --- ntfy-alertmanager bridge ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ntfy-alertmanager-config
-  namespace: monitoring
-data:
-  config: |
-    http-address :8080
-    log-level info
-    alert-mode single
-
-    labels {
-      order "severity"
-      severity "critical" {
-        priority 5
-        tags "rotating_light"
-        icon "https://prometheus.io/assets/favicons/favicon-32x32.png"
-      }
-      severity "warning" {
-        priority 3
-        tags "warning"
-        icon "https://prometheus.io/assets/favicons/favicon-32x32.png"
-      }
-    }
-
-    resolved {
-      tags "white_check_mark"
-      icon "https://prometheus.io/assets/favicons/favicon-32x32.png"
-    }
-
-    ntfy {
-      server https://ntfy.sh
-      topic argus-alerts-F39BA353
-    }
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,7 +18,7 @@ spec:
     spec:
       containers:
         - name: ntfy-alertmanager
-          image: codeberg.org/xenrox/ntfy-alertmanager:latest
+          image: codeberg.org/xenrox/ntfy-alertmanager:v1.2.1
           args: ["--config", "/etc/ntfy-alertmanager/config"]
           ports:
             - name: http
@@ -88,42 +53,6 @@ spec:
       targetPort: http
 ---
 # --- Alertmanager ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: alertmanager-config
-  namespace: monitoring
-data:
-  alertmanager.yml: |
-    global:
-      resolve_timeout: 5m
-
-    route:
-      receiver: ntfy
-      group_by: [alertname, namespace]
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 4h
-      routes:
-        - receiver: ntfy
-          matchers:
-            - severity="critical"
-          repeat_interval: 1h
-          continue: false
-
-    receivers:
-      - name: ntfy
-        webhook_configs:
-          - url: "http://ntfy-alertmanager:8080"
-            send_resolved: true
-
-    inhibit_rules:
-      - source_matchers:
-          - severity="critical"
-        target_matchers:
-          - severity="warning"
-        equal: [alertname, namespace]
----
 apiVersion: v1
 kind: Service
 metadata:

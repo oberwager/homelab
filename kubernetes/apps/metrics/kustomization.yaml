@@ -1,21 +1,52 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: monitoring
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: monitoring-stack
+    includeSelectors: true
+    includeTemplates: true
+components:
+  - ../../components/external-secret
 resources:
   - 00-namespace.yaml
+  - prometheus-rbac.yaml
   - prometheus.yaml
-  - prometheus-config.yaml
-  - prometheus-alert-rules.yaml
   - grafana.yaml
-  - grafana-dashboard-provisioning.yaml
   - alertmanager.yaml
   - loki.yaml
   - node-exporter.yaml
+  - kube-state-metrics-rbac.yaml
   - kube-state-metrics.yaml
+  - alloy-rbac.yaml
   - alloy.yaml
   - ingress.yaml
   - external-secret.yaml
 configMapGenerator:
+  - name: prometheus-config
+    files:
+      - configs/prometheus.yml
+  - name: prometheus-alert-rules
+    files:
+      - configs/cluster.yml
+  - name: loki-config
+    files:
+      - configs/loki.yml
+  - name: alloy-config
+    files:
+      - config.alloy=configs/alloy.alloy
+  - name: alertmanager-config
+    files:
+      - configs/alertmanager.yml
+  - name: ntfy-alertmanager-config
+    files:
+      - config=configs/ntfy-alertmanager.config
+  - name: grafana-datasources
+    files:
+      - configs/datasources.yml
+  - name: grafana-dashboard-provisioning
+    files:
+      - configs/dashboards.yml
   - name: grafana-dashboards
     options:
       disableNameSuffixHash: true
