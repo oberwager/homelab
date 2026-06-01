@@ -78,7 +78,7 @@ spec:
             - name: TS_HOSTNAME
               value: "argus-subnet-router"
             - name: TS_EXTRA_ARGS
-              value: "--accept-routes"
+              value: "--accept-routes --advertise-exit-node --accept-dns=false"
           securityContext:
             capabilities:
               add:
