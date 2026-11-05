@@ -1,10 +1,18 @@
 # Homelab
 
-GitOps configuration for a single-node Kubernetes cluster running on [Talos Linux](https://talos.dev), an immutable, API-driven OS with no SSH and no shell.
+Git-driven configuration for a single-node Kubernetes cluster on [Talos Linux](https://talos.dev), an immutable, API-driven OS with no SSH and no shell.
+
+## Highlights
+
+- **Open source infrastructure with no secrets in git.** Everything from the Talos PKI to application credentials lives in 1Password and is injected at generation or sync time. The repo contains only `op://` references.
+- **Signed, scanned deploys.** Images are secret-scanned, vulnerability-scanned, signed with keyless Cosign, and verified again before `kubectl apply`.
+- **No exposed management plane.** Deploys reach the cluster over a Tailscale tunnel using short-lived OAuth credentials. Talos has no SSH.
+- **Observability built in.** Prometheus, Loki, Alloy, and Alertmanager, with six custom Grafana dashboards and Uptime Kuma for external checks.
+- **Rebuildable from bare metal.** The [setup guide](#setup) reproduces the cluster from a fresh Talos install.
 
 ## Architecture
 
-The cluster uses push-based GitOps, every application repository shares the same [CI pipeline template](https://github.com/oberwager/d2-live/blob/main/.github/workflows/docker-publish.yml).
+Deploys are push-based. Every application repository shares the same [CI pipeline template](https://github.com/oberwager/d2-live/blob/main/.github/workflows/docker-publish.yml), which lives in the each service repo, like [d2-live](https://github.com/oberwager/d2-live).
 
 ```
 push to main
@@ -24,37 +32,65 @@ push to main
           └── kubectl apply
 ```
 
-An image that fails scanning never gets signed, and an unsigned image is rejected at deploy. Cosign uses keyless signing tied to the GitHub Actions OIDC identity, so there are no long-lived signing keys to rotate or leak.
+An image that fails scanning is never signed, and an unsigned image is rejected at deploy. Cosign signs keylessly against the GitHub Actions OIDC identity, so there are no long-lived signing keys to rotate or leak.
 
-**Secrets** managed by ESO. [1Password Connect](https://developer.1password.com/docs/connect) runs in-cluster as the secret backend. The [External Secrets Operator](https://external-secrets.io) syncs secrets into Kubernetes via a `ClusterSecretStore`. A [Kustomize component](kubernetes/components/external-secret/kustomization.yaml) patches the shared store reference and refresh interval onto every `ExternalSecret` in the repo.
+**Secrets.** [1Password Connect](https://developer.1password.com/docs/connect) runs in-cluster as the secret backend, and the [External Secrets Operator](https://external-secrets.io) syncs from it through a `ClusterSecretStore`. A [Kustomize component](kubernetes/components/external-secret/kustomization.yaml) patches the shared store reference and refresh interval onto every `ExternalSecret`, so individual manifests carry no boilerplate.
 
-**Networking**: Tailscale runs as a subnet router inside the cluster. CI deploys through the same tailnet via a short-lived OAuth client.
+**Networking.** Tailscale runs in-cluster as a subnet router. CI deploys through the same tailnet with a short-lived OAuth client.
 
-**TLS**: cert-manager issues Let's Encrypt certificates for all ingresses. nginx runs as a DaemonSet, on a multi-node cluster this would be a LoadBalancer or NodePort setup but with a single node I bind to port 80/443 directly.
+**TLS and ingress.** cert-manager issues Let's Encrypt certificates for every ingress. nginx runs as a DaemonSet bound to ports 80 and 443 on the host. A multi-node cluster would use a LoadBalancer or NodePort instead.
 
-**OS**: Talos Linux. Node configuration is declarative YAML applied via the Talos API. [`talhelper`](https://github.com/budimanjojo/talhelper) templates per-node machine configs. Secrets are pulled from 1Password at generation time and never stored in the repo.
+**OS.** Talos node configuration is declarative YAML applied through the Talos API. [`talhelper`](https://github.com/budimanjojo/talhelper) renders per-node machine configs, pulling secrets from 1Password at generation time.
+
+**Databases.** [CloudNative-PG](https://cloudnative-pg.io) runs Postgres for the applications on the cluster, with backups.
+
+## Repository layout
+
+```
+.
+├── talos/
+│   ├── talconfig.yaml          # Node definitions for talhelper
+│   └── talsecret.yaml          # Secret template, values resolved from 1Password
+├── kubernetes/
+│   ├── kustomization.yaml      # Root: composes everything below
+│   ├── apps/
+│   │   ├── cert-manager/       # Issuers and ACME credentials
+│   │   ├── external-secrets/   # ESO, 1Password Connect, ClusterSecretStore
+│   │   ├── nginx/              # Ingress controller (DaemonSet)
+│   │   ├── tailscale/          # Subnet router and exit node
+│   │   ├── metrics/            # Prometheus, Loki, Alloy, Grafana, Alertmanager
+│   │   │   ├── configs/        # Per-service config files
+│   │   │   └── dashboards/     # Grafana dashboards as JSON
+│   │   ├── kuma/               # Uptime Kuma
+│   │   ├── postgres/           # CloudNative-PG clusters
+│   │   └── local-path/         # Storage class with Retain policy
+│   ├── components/
+│   │   └── external-secret/    # Shared patch applied to every ExternalSecret
+│   └── serviceaccounts/        # Scoped RBAC for CI deploys and Prometheus
+└── .env.tpl                    # op:// references only, no values
+```
 
 ## Stack
 
-| Component                                                                | Role                                                   |
-| ---                                                                      | ---                                                    |
-| [Talos Linux](https://talos.dev)                                         | Immutable, API-driven Kubernetes OS — no SSH, no shell |
-| [talhelper](https://github.com/budimanjojo/talhelper)                    | Talos config templating with secret injection          |
-| [External Secrets Operator](https://external-secrets.io)                 | Syncs secrets from 1Password into Kubernetes           |
-| [1Password Connect](https://developer.1password.com/docs/connect)        | In-cluster 1Password API bridge                        |
-| [cert-manager](https://cert-manager.io)                                  | Automatic TLS via Let's Encrypt                        |
-| [ingress-nginx](https://kubernetes.github.io/ingress-nginx)              | Ingress controller (DaemonSet, hostNetwork)            |
-| [Tailscale](https://tailscale.com)                                       | Subnet router + CI deploy tunnel                       |
-| [CloudNative-PG](https://cloudnative-pg.io)                              | Operator-managed Postgres                              |
-| [Prometheus](https://prometheus.io)                                      | Metrics                                                |
-| [Loki](https://grafana.com/oss/loki)                                     | Logs                                                   |
-| [Grafana Alloy](https://grafana.com/docs/alloy/latest/)                  | OpenTelemetry collector                                |
-| [Grafana](https://grafana.com)                                           | Dashboards                                             |
-| [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) | Alert routing                                          |
-| [Uptime Kuma](https://github.com/louislam/uptime-kuma)                   | Uptime monitoring                                      |
-| [Cosign](https://docs.sigstore.dev)                                      | Keyless image signing + verification                   |
-| [Trivy](https://trivy.dev)                                               | Container vulnerability scanning                       |
-| [Gitleaks](https://gitleaks.io)                                          | Secret detection in CI                                 |
+| Component                                                                | Role                                                     |
+| ---                                                                      | ---                                                      |
+| [Talos Linux](https://talos.dev)                                         | Immutable, API-driven Kubernetes OS with no SSH or shell |
+| [talhelper](https://github.com/budimanjojo/talhelper)                    | Talos config templating with secret injection            |
+| [External Secrets Operator](https://external-secrets.io)                 | Syncs secrets from 1Password into Kubernetes             |
+| [1Password Connect](https://developer.1password.com/docs/connect)        | In-cluster 1Password API bridge                          |
+| [cert-manager](https://cert-manager.io)                                  | Automatic TLS via Let's Encrypt                          |
+| [ingress-nginx](https://kubernetes.github.io/ingress-nginx)              | Ingress controller (DaemonSet, hostNetwork)              |
+| [Tailscale](https://tailscale.com)                                       | Subnet router + CI deploy tunnel                         |
+| [CloudNative-PG](https://cloudnative-pg.io)                              | Operator-managed Postgres                                |
+| [Prometheus](https://prometheus.io)                                      | Metrics                                                  |
+| [Loki](https://grafana.com/oss/loki)                                     | Logs                                                     |
+| [Grafana Alloy](https://grafana.com/docs/alloy/latest/)                  | OpenTelemetry collector                                  |
+| [Grafana](https://grafana.com)                                           | Dashboards                                               |
+| [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) | Alert routing                                            |
+| [Uptime Kuma](https://github.com/louislam/uptime-kuma)                   | Uptime monitoring                                        |
+| [Cosign](https://docs.sigstore.dev)                                      | Keyless image signing + verification                     |
+| [Trivy](https://trivy.dev)                                               | Container vulnerability scanning                         |
+| [Gitleaks](https://gitleaks.io)                                          | Secret detection in CI                                   |
 
 ## Setup
 
@@ -116,7 +152,7 @@ talhelper gensecret | yq eval -o=json | jq '{
 Pull secrets from 1Password and render the node configs:
 
 ```bash
-op run --env-file .env --no-masking -- \
+op run --env-file .env.tpl --no-masking -- \
   talhelper genconfig \
     --config-file talos/talconfig.yaml \
     --out-dir talos/.rendered \
