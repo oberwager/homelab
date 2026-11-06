@@ -1,0 +1,120 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "timezone": "America/New_York",
+  "prCreation": "not-pending",
+  "prConcurrentLimit": 5,
+  "kubernetes": {
+    "managerFilePatterns": [
+      "/^kubernetes/.+\\.ya?ml$/"
+    ]
+  },
+  "customManagers": [
+    {
+      "description": "Remote kustomize resources pinned to a release tag (cert-manager, external-secrets, local-path)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^kubernetes/.+/kustomization\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "https://(?:github\\.com|raw\\.githubusercontent\\.com)/(?<depName>[^/]+/[^/]+)/(?:releases/download/)?(?<currentValue>v\\d[^/]*)/"
+      ],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "CloudNative-PG: the branch and file name both carry the version",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^kubernetes/apps/postgres/kustomization\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "(?:cloudnative-pg/release-\\d+\\.\\d+/releases/cnpg-(?<currentValue>\\d+\\.\\d+\\.\\d+)\\.yaml)"
+      ],
+      "depNameTemplate": "cloudnative-pg/cloudnative-pg",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$",
+      "autoReplaceStringTemplate": "cloudnative-pg/release-{{{newMajor}}}.{{{newMinor}}}/releases/cnpg-{{{newValue}}}.yaml"
+    },
+    {
+      "description": "Talos version in talconfig",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^talos/talconfig\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "talosVersion: (?<currentValue>v\\S+)"
+      ],
+      "depNameTemplate": "siderolabs/talos",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "description": "Kubernetes version in talconfig",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^talos/talconfig\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "kubernetesVersion: (?<currentValue>v\\S+)"
+      ],
+      "depNameTemplate": "kubernetes/kubernetes",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Minor and patch bumps of plain images merge themselves once validate passes",
+      "matchManagers": [
+        "kubernetes",
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Operators ship CRD changes, Talos and Kubernetes need a manual upgrade step, and Tailscale is the pod CI deploys through: review every one",
+      "matchPackageNames": [
+        "/cert-manager/",
+        "/external-secrets/",
+        "/cloudnative-pg/",
+        "/ingress-nginx/",
+        "siderolabs/talos",
+        "kubernetes/kubernetes",
+        "/tailscale/"
+      ],
+      "automerge": false,
+      "labels": [
+        "needs-review"
+      ]
+    },
+    {
+      "description": "All major bumps are reviewed",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "labels": [
+        "needs-review"
+      ]
+    },
+    {
+      "description": "One PR for the Grafana stack",
+      "matchPackageNames": [
+        "/grafana/",
+        "/prom/",
+        "/prometheus/"
+      ],
+      "groupName": "observability"
+    }
+  ]
+}
