@@ -68,9 +68,8 @@
   ],
   "packageRules": [
     {
-      "description": "Minor and patch bumps of plain images merge themselves once validate passes",
+      "description": "Minor, patch and digest bumps of GitHub Actions merge themselves once validate passes. Kubernetes images wait for review until the upgrade test in docs/ci-upgrade-test.md exists",
       "matchManagers": [
-        "kubernetes",
         "github-actions"
       ],
       "matchUpdateTypes": [
