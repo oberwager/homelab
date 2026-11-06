@@ -1,0 +1,60 @@
+name: Validate
+
+# Pull requests and main run this through deploy.yml. Pushes to other branches
+# run it directly, which also gives Renovate's branches a check before the PR opens.
+on:
+  push:
+    branches-ignore: [ main ]
+  workflow_call:
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  # Renders the whole tree exactly as `kubectl apply -k` would (including the
+  # remote release URLs Renovate bumps), then checks every object's schema.
+  # A bad version bump that changes a CRD or removes an API fails here.
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Render kustomization
+        run: kubectl kustomize kubernetes/ > rendered.yaml
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz kubeconform
+
+      # Built-in kinds use the upstream schemas; CRD-backed kinds (ExternalSecret,
+      # ClusterIssuer, CNPG Cluster, ...) use the community CRD catalog. Kinds with
+      # no published schema are skipped, not failed. Not -strict: the catalog can lag
+      # an operator release, and the PR diff job gets the API server's own validation.
+      - name: Schema check
+        run: |
+          ./kubeconform -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered.yaml
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
