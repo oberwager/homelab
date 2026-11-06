@@ -17,15 +17,21 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: gha-deployer
+# App repos only. Scoped to the kinds they actually ship (surveyed across the
+# repos' kubernetes/ dirs). Cluster infrastructure (CRDs, RBAC, webhooks,
+# DaemonSets, ...) is applied by gha-infra instead. No deletes: CI never
+# removes anything, and a deleted CNPG Cluster takes its data with it.
+# Convenience boundary, not a hard one: it can create workloads in any namespace,
+# and a pod can run as another service account (gha-infra) without extra permission.
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["batch"]
-    resources: ["cronjobs", "jobs"]
+    resources: ["cronjobs"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
+    resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: [""]
     resources: ["services", "configmaps", "persistentvolumeclaims", "persistentvolumes"]
@@ -34,14 +40,11 @@ rules:
     resources: ["namespaces"]
     verbs: ["get", "list", "create", "patch", "update"]
   - apiGroups: ["external-secrets.io"]
-    resources: ["externalsecrets", "clusterexternalsecrets"]
+    resources: ["externalsecrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["postgresql.cnpg.io"]
     resources: ["clusters", "scheduledbackups"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["networkpolicies"]
-    verbs: ["get", "list", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

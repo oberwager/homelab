@@ -1,0 +1,35 @@
+# Applies this repo (kubectl apply -k kubernetes/) from CI: deploy.yml and
+# drift.yml. The tree contains CRDs, ClusterRoles, webhooks and RBAC, and
+# Kubernetes only lets you create a role you already hold (unless you have
+# escalate/bind), so any role that can apply it is cluster-admin in practice.
+# This says so openly instead of enumerating kinds that grant the same thing.
+#
+# Keep it separate from gha-deployer, which app repos use and which stays
+# narrow. The token lives only in this repo's INFRA_K8S_SA_TOKEN secret.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gha-infra
+  namespace: kube-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gha-infra-token
+  namespace: kube-system
+  annotations:
+    kubernetes.io/service-account.name: gha-infra
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gha-infra
+subjects:
+  - kind: ServiceAccount
+    name: gha-infra
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
