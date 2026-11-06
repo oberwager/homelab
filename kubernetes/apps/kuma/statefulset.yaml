@@ -38,11 +38,18 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 10
             failureThreshold: 3
+          # Kuma 2 migrates the 1 GB SQLite database on first start. Liveness and readiness
+          # stay off until this passes, so a long migration cannot get the pod killed.
+          startupProbe:
+            httpGet:
+              path: /
+              port: web
+            periodSeconds: 10
+            failureThreshold: 180
           livenessProbe:
             httpGet:
               path: /
               port: web
-            # Generous: the 1 GB SQLite database can take a while to open at startup.
             initialDelaySeconds: 120
             periodSeconds: 20
             failureThreshold: 3
