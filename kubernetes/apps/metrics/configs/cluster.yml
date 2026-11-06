@@ -69,6 +69,35 @@ groups:
           summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} replica mismatch"
           description: "Expected {{ $value }} replicas but not all are available"
 
+      # The old pods keep a stalled rollout "available", so the rule above stays
+      # quiet while the new pods can't start (admission denied, image pull error,
+      # crash loop). Progressing=false is set once progressDeadlineSeconds passes.
+      - alert: DeploymentRolloutStalled
+        expr: kube_deployment_status_condition{condition="Progressing",status="false"} == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rollout of {{ $labels.namespace }}/{{ $labels.deployment }} is stalled"
+          description: "The new ReplicaSet can't make progress; the previous pods are still serving. Check the ReplicaSet events."
+
+      # StatefulSets and DaemonSets have no Progressing condition.
+      - alert: StatefulSetRolloutStalled
+        expr: kube_statefulset_status_replicas_updated != kube_statefulset_replicas
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} has pods on an old revision"
+
+      - alert: DaemonSetRolloutStalled
+        expr: kube_daemonset_status_updated_number_scheduled != kube_daemonset_status_desired_number_scheduled
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} has pods on an old revision"
+
       # Tracks the CronJob itself, not individual jobs (which rotate out)
       - alert: CronJobFailed
         expr: |
