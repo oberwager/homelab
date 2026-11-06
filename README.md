@@ -66,12 +66,43 @@ talosctl apply-config --talosconfig talos/.rendered/talosconfig \
   --nodes <ip> --file talos/.rendered/<hostname>.yaml
 talosctl bootstrap --talosconfig talos/.rendered/talosconfig --nodes <ip>
 
-# 5. Fetch the kubeconfig and apply everything
+# 5. Fetch the kubeconfig
 talosctl kubeconfig --talosconfig talos/.rendered/talosconfig
+
+# 6. Bootstrap the secrets backend. No manifest creates these two Secrets, and the
+#    ClusterSecretStore needs both. Connect writes 1password-credentials.json here.
+op connect server create homelab-k8s --vaults homelab-k8s
+kubectl apply -f kubernetes/apps/external-secrets/00-namespace.yaml
+kubectl -n external-secrets create secret generic op-credentials \
+  --from-file=1password-credentials.json
+rm 1password-credentials.json
+op connect token create homelab-k8s --server homelab-k8s --vault homelab-k8s,r \
+  | tr -d '\n' \
+  | kubectl -n external-secrets create secret generic op-access-token --from-file=token=/dev/stdin
+
+# 7. Apply everything
 kubectl apply -k kubernetes/ --server-side --force-conflicts
 ```
 
-Step 5 also creates the CI service accounts. Every later apply runs from CI.
+Step 7 also creates the CI service accounts. Every later apply runs from CI.
+
+If the apply fails on a custom resource (ClusterIssuer, ClusterSecretStore, ExternalSecret) or a webhook, wait for the cert-manager, External Secrets and CNPG webhook pods to become Ready and run the same apply again.
+
+Once the subnet router joins, approve its routes and the exit node in the Tailscale admin console. When you rebuild a node, delete the old `argus-subnet-router` device there first so the new one keeps the name.
+
+### 1Password items
+
+Everything lives in the `homelab-k8s` vault.
+
+| Item | Field | Used by |
+| --- | --- | --- |
+| `talos` | one section per secret | Written by `scripts/talos-secrets-to-1password.sh`, read by `op run --env-file .env.tpl`. |
+| `cloudflare-api-token-secret` | `api-token` | The cert-manager DNS-01 solver for `letsencrypt-prod` (ACME email `tls@lucas.tools`). Needs a Cloudflare API token with DNS edit rights on the zone. |
+| `ghcr-pat` | `token` | A ClusterExternalSecret copies it as a `kubernetes.io/dockerconfigjson` pull secret into every namespace labelled `ghcr-pat=true`. The template writes the field into the registry auth value as is, so store base64 of `<github-user>:<PAT>`. The PAT needs read access to packages. |
+| `grafana-admin` | `password` | Grafana admin password. |
+| `tailscale-auth` | `TS_AUTHKEY` | The subnet router joins the tailnet with it. State then persists in the `tailscale-state` Secret. |
+| `betting-backup` | `ACCESS_KEY_ID`, `ACCESS_SECRET_KEY` | Cloudflare R2 credentials for the `betting-backup` bucket. The ExternalSecrets of the three Postgres clusters read it, and each cluster backs up under its own prefix. |
+| `GitHub Repo Secrets` | fields and files | CI. See [Secrets](#secrets). |
 
 ## CI setup
 
