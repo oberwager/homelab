@@ -71,7 +71,7 @@ spec:
               mountPath: /loki
       containers:
         - name: loki
-          image: grafana/loki:3.6.7
+          image: grafana/loki:3.7.9
           args:
             - "-config.file=/etc/loki/loki.yml"
             - "-target=all"

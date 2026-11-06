@@ -72,7 +72,7 @@ spec:
               mountPath: /prometheus
       containers:
         - name: prometheus
-          image: prom/prometheus:v3.10.0
+          image: prom/prometheus:v3.16.0
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
