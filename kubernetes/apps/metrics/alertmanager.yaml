@@ -20,7 +20,7 @@ spec:
         - name: ntfy-alertmanager
           # Pinned to the digest of the build that was running as :latest when this
           # was written (the registry has no v1.2.1 tag; only 0.5.0-1.0.2, dev, latest).
-          image: codeberg.org/xenrox/ntfy-alertmanager@sha256:2c94a0ebbffc481c787f7ca98988b54f4e1889a55bc734e305b97f593cd5af09
+          image: codeberg.org/xenrox/ntfy-alertmanager@sha256:2f216837bb459f01be3cec28fd1db1bc08c06785331f568537413c6feefc48dd
           args: ["--config", "/etc/ntfy-alertmanager/config"]
           ports:
             - name: http
