@@ -51,6 +51,9 @@ metadata:
     app: grafana
 spec:
   replicas: 1
+  # Single-writer volume (TSDB/BoltDB/SQLite lock): the old pod must exit first.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana

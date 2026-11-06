@@ -1,0 +1,31 @@
+name: Connect to cluster
+description: >
+  Joins the tailnet as tag:ci and points kubectl at the cluster. Shared by the
+  deploy and drift workflows. Composite actions can't read secrets, so the
+  caller passes them in.
+
+inputs:
+  oauth-client-id:
+    required: true
+  audience:
+    required: true
+  k8s-url:
+    required: true
+  k8s-token:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
+      with:
+        oauth-client-id: ${{ inputs.oauth-client-id }}
+        audience: ${{ inputs.audience }}
+        tags: tag:ci
+
+    # kubectl is preinstalled on ubuntu-latest, so no setup-kubectl step.
+    - uses: azure/k8s-set-context@8698eba2499e9012f0d5085f8798077cce4bc526 # v5.0.1
+      with:
+        method: service-account
+        k8s-url: ${{ inputs.k8s-url }}
+        k8s-secret: ${{ inputs.k8s-token }}

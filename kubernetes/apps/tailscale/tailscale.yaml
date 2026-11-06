@@ -46,6 +46,16 @@ metadata:
     app: tailscale-subnet-router
 spec:
   replicas: 1
+  # Never take the old pod down before the new one is ready: this pod is the
+  # only route to the API server for CI and for kubectl over the tailnet. Both
+  # pods share the tailscale-state Secret, so for the few seconds they overlap the
+  # node is served by whichever registered last; readiness is tailscaled connected.
+  # (Recreate would remove the overlap but cuts the route if the new pod fails.)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: tailscale-subnet-router
@@ -57,14 +67,28 @@ spec:
       serviceAccountName: tailscale
       containers:
         - name: tailscale
-          image: ghcr.io/tailscale/tailscale:v1.20.1
+          # Pinned by digest. Renovate keeps the tag and digest current. (The old
+          # v1.20.1 pin was a ~75-release downgrade of the persisted node state;
+          # the node ran v1.96.5 before moving to v1.104.4.)
+          image: ghcr.io/tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+          imagePullPolicy: IfNotPresent
           env:
             # Persist state in a k8s secret so restarts don't re-register
             - name: TS_KUBE_SECRET
               value: "tailscale-state"
-            # Kernel networking (not userspace) - needed for subnet routing
+            # Userspace networking: this namespace enforces the baseline Pod
+            # Security level, which forbids the NET_ADMIN that kernel mode needs.
+            # Subnet routes and the exit node both work in userspace mode.
             - name: TS_USERSPACE
+              value: "true"
+            - name: TS_ACCEPT_DNS
               value: "false"
+            # Readiness = tailscaled is connected. With maxUnavailable: 0 the old
+            # pod keeps routing until the new one is actually up.
+            - name: TS_ENABLE_HEALTH_CHECK
+              value: "true"
+            - name: TS_LOCAL_ADDR_PORT
+              value: "0.0.0.0:9002"
             - name: TS_DEBUG_FIREWALL_MODE
               value: "auto"
             # Auth key from secret
@@ -78,11 +102,14 @@ spec:
             - name: TS_HOSTNAME
               value: "argus-subnet-router"
             - name: TS_EXTRA_ARGS
-              value: "--accept-routes --advertise-exit-node --accept-dns=false"
-          securityContext:
-            capabilities:
-              add:
-                - NET_ADMIN
+              value: "--accept-routes --advertise-exit-node"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9002
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
           resources:
             requests:
               cpu: 50m

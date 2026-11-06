@@ -1,0 +1,81 @@
+name: Drift
+
+# Nightly: does the cluster still match main? Opens (or updates) one issue
+# while it doesn't, and closes it once it does.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Same lock as deploy.yml, so a nightly run never diffs a half-applied cluster.
+  group: cluster
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    # Declares `production` because that environment holds the cluster token and is
+    # restricted to main. Don't add required reviewers to it: this nightly job would
+    # then wait for an approval every night.
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/cluster
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_OAUTH_AUDIENCE }}
+          k8s-url: ${{ secrets.K8S_URL }}
+          k8s-token: ${{ secrets.INFRA_K8S_SA_TOKEN }}
+
+      - name: Diff against the cluster
+        env:
+          # Hides last-applied/generation bookkeeping and Secrets from the output.
+          KUBECTL_EXTERNAL_DIFF: ${{ github.workspace }}/.github/scripts/kdiff
+        run: |
+          set +e
+          kubectl diff -k kubernetes/ --server-side --force-conflicts > diff.txt 2> diff.err
+          code=$?
+          set -e
+          if [ "$code" -gt 1 ]; then
+            cat diff.err
+            exit "$code"
+          fi
+
+      - name: Open, update or close the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --label drift --state open --json number --jq '.[0].number // empty')
+
+          if [ ! -s diff.txt ]; then
+            [ -n "$existing" ] && gh issue close "$existing" --comment "Cluster matches main again ($RUN_URL)."
+            exit 0
+          fi
+
+          # The hash marks identical drift so an unchanged diff is not re-posted nightly.
+          hash=$(sha256sum diff.txt | cut -c1-16)
+          {
+            echo "<!-- drift:$hash -->"
+            echo "The cluster differs from \`main\` ($RUN_URL)."
+            echo
+            .github/scripts/diff-body.sh diff.txt /dev/null 1
+          } > body.md
+
+          if [ -n "$existing" ]; then
+            seen=$(gh issue view "$existing" --json body,comments --jq '[.body, (.comments[].body)] | join("\n")')
+            if grep -qF "drift:$hash" <<<"$seen"; then
+              echo "The same drift is already reported in #$existing."
+              exit 0
+            fi
+            gh issue comment "$existing" --body-file body.md
+          else
+            gh label create drift --color B60205 --description "Cluster differs from main" 2>/dev/null || true
+            gh issue create --title "Cluster drift detected" --label drift --body-file body.md
+          fi

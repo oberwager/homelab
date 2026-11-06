@@ -1,0 +1,17 @@
+#!/bin/sh
+# KUBECTL_EXTERNAL_DIFF for `kubectl diff`: plain `diff -u` that drops hunks
+# consisting only of bookkeeping noise, so a diff of the whole cluster shows
+# real changes instead of hundreds of lines.
+#   - last-applied-configuration: the old client-side-apply annotation (its
+#     value is rewritten on the first server-side apply)
+#   - generation / template generation counters
+# Core-group Secrets (files named v1.Secret.*) are left out entirely. This output
+# is posted to PR comments and drift issues on a public repo, and the Secrets in
+# this tree are service-account tokens. ExternalSecrets are still diffed.
+# kubectl passes two directories (live, merged) and treats exit 1 as "changes".
+exec diff -u -N -r \
+  -x 'v1.Secret.*' \
+  -I '^ *{"apiVersion"' \
+  -I '^ *generation:' \
+  -I '^ *deprecated\.daemonset\.template\.generation:' \
+  "$@"

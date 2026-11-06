@@ -13,11 +13,6 @@ spec:
       labels:
         app: kuma
     spec:
-      securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
-        runAsNonRoot: true
       containers:
         - name: kuma
           image: louislam/uptime-kuma:1.23.16
@@ -35,7 +30,7 @@ spec:
               cpu: 50m
               memory: 128Mi
             limits:
-              memory: 512Mi
+              memory: 1Gi
           readinessProbe:
             httpGet:
               path: /
@@ -47,12 +42,10 @@ spec:
             httpGet:
               path: /
               port: web
-            initialDelaySeconds: 30
+            # Generous: the 1 GB SQLite database can take a while to open at startup.
+            initialDelaySeconds: 120
             periodSeconds: 20
             failureThreshold: 3
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
           volumeMounts:
             - name: kuma-data
               mountPath: /app/data

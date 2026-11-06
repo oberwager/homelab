@@ -4,7 +4,9 @@ namespace: monitoring
 labels:
   - pairs:
       app.kubernetes.io/part-of: monitoring-stack
-    includeSelectors: true
+    # Selectors are immutable: adding the label to them would require
+    # deleting and recreating every workload. Pod templates still get it.
+    includeSelectors: false
     includeTemplates: true
 components:
   - ../../components/external-secret
