@@ -1,17 +1,21 @@
 name: Deploy
 
-# PRs: validate, then show `kubectl diff` as a PR comment.
-# main: validate, then apply. A manual run only deploys when started on main.
+# main: validate, then apply and wait for the rollouts. A manual run only deploys
+# when started on main.
+#
+# Pull requests deliberately get no cluster access: they run validate only (see
+# validate.yml). A pull request's workflow code is whatever the branch says, so it
+# must never see the Tailscale credential or the cluster-admin token. Both are only
+# released to jobs in the `production` environment, which is limited to main.
 on:
-  pull_request:
   push:
     branches: [ main ]
   workflow_dispatch:
 
 concurrency:
-  # Never cancel an apply mid-flight; PR diffs are disposable.
-  group: deploy-${{ github.event_name == 'pull_request' && github.ref || 'cluster' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Shared with drift.yml. Never cancel an apply mid-flight.
+  group: cluster
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -20,63 +24,11 @@ jobs:
       pull-requests: read
     uses: ./.github/workflows/validate.yml
 
-  diff:
-    needs: validate
-    # Fork PRs get no secrets and no OIDC token, so they can't reach the cluster.
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: ./.github/actions/cluster
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          audience: ${{ secrets.TS_OAUTH_AUDIENCE }}
-          k8s-url: ${{ secrets.K8S_URL }}
-          k8s-token: ${{ secrets.INFRA_K8S_SA_TOKEN }}
-
-      # kubectl diff exits 0 for no changes, 1 for changes, >1 for errors. Record the
-      # code instead of failing here, so the comment step can say why a diff failed.
-      - name: Diff against the cluster
-        id: diff
-        env:
-          # Hides last-applied/generation bookkeeping and Secrets from the output.
-          KUBECTL_EXTERNAL_DIFF: ${{ github.workspace }}/.github/scripts/kdiff
-        run: |
-          set +e
-          kubectl diff -k kubernetes/ --server-side --force-conflicts > diff.txt 2> diff.err
-          echo "code=$?" >> "$GITHUB_OUTPUT"
-
-      - name: Comment the diff on the PR
-        if: steps.diff.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          CODE: ${{ steps.diff.outputs.code }}
-        run: |
-          {
-            echo "<!-- cluster-diff -->"
-            echo "### Cluster diff"
-            .github/scripts/diff-body.sh diff.txt diff.err "$CODE"
-          } > comment.md
-          gh pr comment "$PR" --body-file comment.md --edit-last --create-if-none
-
-      - name: Fail if the diff errored
-        if: steps.diff.outputs.code != '0' && steps.diff.outputs.code != '1'
-        run: |
-          grep -v '^Warning:' diff.err || true
-          exit 1
-
   deploy:
     needs: validate
-    # Pushes to main, or a manual run started on main. Never an unmerged branch.
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # The `production` environment is restricted to main in the repo settings, which
+    # is also what releases the cluster token; this is a second, visible guard.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read

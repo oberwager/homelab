@@ -1,7 +1,8 @@
 name: Validate
 
-# Pull requests and main run this through deploy.yml. Pushes to other branches
-# run it directly, which also gives Renovate's branches a check before the PR opens.
+# main runs this through deploy.yml. Pushes to every other branch run it directly,
+# which is what checks a pull request and gives Renovate's branches a check before
+# the PR opens. It needs no secrets and no cluster access.
 on:
   push:
     branches-ignore: [ main ]

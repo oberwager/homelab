@@ -19,8 +19,10 @@ jobs:
       contents: read
       id-token: write
       issues: write
-    # No `environment:` here on purpose: required reviewers on production would
-    # make this nightly job wait for an approval. It only needs repo secrets.
+    # Declares `production` because that environment holds the cluster token and is
+    # restricted to main. Don't add required reviewers to it: this nightly job would
+    # then wait for an approval every night.
+    environment: production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
