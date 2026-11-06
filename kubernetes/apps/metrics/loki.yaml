@@ -64,7 +64,7 @@ spec:
     spec:
       initContainers:
         - name: volume-permissions
-          image: busybox:1.36
+          image: busybox:1.38
           command: ["sh", "-c", "chown -R 10001:10001 /loki"]
           volumeMounts:
             - name: storage
