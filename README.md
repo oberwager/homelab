@@ -1,15 +1,16 @@
 # homelab
 
-One Kubernetes node running [Talos Linux](https://talos.dev). Git holds the config, 1Password holds the secrets, and CI applies every merge to `main`. The repo contains `op://` references and no secret values.
+My homelab runs on a single Talos node. All configuration is kept in this repo, and every change is applied through Github Actions. 
+Secrets live in 1Password, and the External Secrets Operator copies them into the cluster.
 
-| | |
-| --- | --- |
-| OS | Talos, no SSH. [talhelper](https://github.com/budimanjojo/talhelper) renders the machine configs. |
-| Ingress | ingress-nginx as a DaemonSet on host ports 80 and 443. cert-manager issues Let's Encrypt certs. |
-| Secrets | External Secrets Operator reads 1Password Connect. A kustomize component patches the store onto every `ExternalSecret`. |
-| Network | Tailscale subnet router and exit node. CI reaches the API server through it. |
-| Data | CloudNative-PG for Postgres, `local-path` storage with a Retain policy. |
-| Monitoring | Prometheus, Loki, Alloy, Grafana (six dashboards), Alertmanager into ntfy, Uptime Kuma. |
+|            |                                                                                                                                                     |
+| ---        | ---                                                                                                                                                 |
+| OS         | Talos, no SSH. [talhelper](https://github.com/budimanjojo/talhelper) renders the machine configs.                                                   |
+| Ingress    | ingress-nginx as a DaemonSet on host ports 80 and 443. cert-manager issues Let's Encrypt certs.                                                     |
+| Secrets    | External Secrets Operator reads 1Password Connect. A kustomize component patches the store onto every `ExternalSecret`.                             |
+| Network    | Tailscale subnet router and exit node. CI reaches the API server through it.                                                                        |
+| Data       | CloudNative-PG for Postgres, `local-path` storage with a Retain policy. No backup of the node itself since reprovisioning is faster than restoring. |
+| Monitoring | Prometheus, Loki, Alloy, Grafana (six dashboards), Alertmanager into ntfy, Uptime Kuma.                                                             |
 
 ```
 talos/              talhelper config and secret template
@@ -18,17 +19,9 @@ kubernetes/
   components/       shared kustomize patches
   serviceaccounts/  CI service accounts and RBAC
 scripts/            bootstrap helpers
-.github/            workflows, the cluster login action, kdiff
 renovate.json
 .env.tpl            op:// references for talhelper
 ```
-
-## How changes ship
-
-- **Pull request:** `validate` renders the kustomization and runs kubeconform and gitleaks. It gets no secrets and no cluster access, because a PR runs whatever workflow code its branch holds.
-- **Merge to `main`:** `deploy` runs `kubectl apply -k kubernetes/ --server-side --force-conflicts`, then waits for every Deployment, StatefulSet and DaemonSet to roll out. A stalled rollout fails the run.
-- **Nightly:** `drift` diffs the cluster against `main` and opens an issue while they differ. Prometheus alerts on rollouts that stall between deploys.
-- **Renovate** bumps images, release URLs, and the Talos and Kubernetes versions. Minor and patch image bumps merge once `validate` passes. Operators, Tailscale, Talos, Kubernetes and majors wait for review. Upgrade Talos and Kubernetes by hand with `talosctl`.
 
 `main` needs a PR with passing `manifests` and `gitleaks` checks. To preview a change before you merge it:
 
@@ -37,14 +30,14 @@ KUBECTL_EXTERNAL_DIFF=$PWD/.github/scripts/kdiff \
   kubectl diff -k kubernetes/ --server-side --force-conflicts
 ```
 
-Applies are server-side because the operator CRDs exceed the annotation size that client-side apply needs. Prometheus, Loki and Grafana use `Recreate`: a new pod can't take the database lock while the old one holds it.
+Applies are server-side because the operator CRDs exceed the annotation size that client-side apply needs.
 
-App repos build, scan, sign (keyless Cosign) and deploy through a shared pipeline, for example [d2-live](https://github.com/oberwager/d2-live/blob/main/.github/workflows/docker-publish.yml). The deploy step verifies the signature before it applies.
+App repos build, scan, sign (keyless Cosign) and deploy through a shared pipeline, for example [d2-live](https://github.com/oberwager/d2-live/blob/main/.github/workflows/docker-publish.yml).
 
 ## Access
 
 - `gha-infra` is cluster-admin and belongs to this repo. Its token is a secret of the `production` environment, which is restricted to `main`.
-- `gha-deployer` belongs to the app repos. It creates and updates the kinds they ship and cannot delete. It can still create workloads in any namespace, so a pod can run as `gha-infra`. Treat `K8S_SA_TOKEN` as sensitive. Per-namespace roles or a ValidatingAdmissionPolicy would close the gap.
+- `gha-deployer` belongs to the app repos. It creates and updates the kinds they ship and cannot delete.
 
 ## Bootstrap
 
@@ -69,8 +62,7 @@ talosctl bootstrap --talosconfig talos/.rendered/talosconfig --nodes <ip>
 # 5. Fetch the kubeconfig
 talosctl kubeconfig --talosconfig talos/.rendered/talosconfig
 
-# 6. Bootstrap the secrets backend. No manifest creates these two Secrets, and the
-#    ClusterSecretStore needs both. Connect writes 1password-credentials.json here.
+# 6. Bootstrap the secrets backend
 op connect server create homelab-k8s --vaults homelab-k8s
 kubectl apply -f kubernetes/apps/external-secrets/00-namespace.yaml
 kubectl -n external-secrets create secret generic op-credentials \
@@ -86,23 +78,19 @@ kubectl apply -k kubernetes/ --server-side --force-conflicts
 
 Step 7 also creates the CI service accounts. Every later apply runs from CI.
 
-If the apply fails on a custom resource (ClusterIssuer, ClusterSecretStore, ExternalSecret) or a webhook, wait for the cert-manager, External Secrets and CNPG webhook pods to become Ready and run the same apply again.
-
-Once the subnet router joins, approve its routes and the exit node in the Tailscale admin console. When you rebuild a node, delete the old `argus-subnet-router` device there first so the new one keeps the name.
-
 ### 1Password items
 
 Everything lives in the `homelab-k8s` vault.
 
-| Item | Field | Used by |
-| --- | --- | --- |
-| `talos` | one section per secret | Written by `scripts/talos-secrets-to-1password.sh`, read by `op run --env-file .env.tpl`. |
-| `cloudflare-api-token-secret` | `api-token` | The cert-manager DNS-01 solver for `letsencrypt-prod` (ACME email `tls@lucas.tools`). Needs a Cloudflare API token with DNS edit rights on the zone. |
-| `ghcr-pat` | `token` | A ClusterExternalSecret copies it as a `kubernetes.io/dockerconfigjson` pull secret into every namespace labelled `ghcr-pat=true`. The template writes the field into the registry auth value as is, so store base64 of `<github-user>:<PAT>`. The PAT needs read access to packages. |
-| `grafana-admin` | `password` | Grafana admin password. |
-| `tailscale-auth` | `TS_AUTHKEY` | The subnet router joins the tailnet with it. State then persists in the `tailscale-state` Secret. |
-| `betting-backup` | `ACCESS_KEY_ID`, `ACCESS_SECRET_KEY` | Cloudflare R2 credentials for the `betting-backup` bucket. The ExternalSecrets of the three Postgres clusters read it, and each cluster backs up under its own prefix. |
-| `GitHub Repo Secrets` | fields and files | CI. See [Secrets](#secrets). |
+| Item                          | Field                                | Used by                                                                                                                                                                                                                                                                               |
+| ---                           | ---                                  | ---                                                                                                                                                                                                                                                                                   |
+| `talos`                       | one section per secret               | Written by `scripts/talos-secrets-to-1password.sh`, read by `op run --env-file .env.tpl`.                                                                                                                                                                                             |
+| `cloudflare-api-token-secret` | `api-token`                          | The cert-manager DNS-01 solver for `letsencrypt-prod` (ACME email `tls@lucas.tools`). Needs a Cloudflare API token with DNS edit rights on the zone.                                                                                                                                  |
+| `ghcr-pat`                    | `token`                              | A ClusterExternalSecret copies it as a `kubernetes.io/dockerconfigjson` pull secret into every namespace labelled `ghcr-pat=true`. The template writes the field into the registry auth value as is, so store base64 of `<github-user>:<PAT>`. The PAT needs read access to packages. |
+| `grafana-admin`               | `password`                           | Grafana admin password.                                                                                                                                                                                                                                                               |
+| `tailscale-auth`              | `TS_AUTHKEY`                         | The subnet router joins the tailnet with it. State then persists in the `tailscale-state` Secret.                                                                                                                                                                                     |
+| `postgres-backup-r2`          | `ACCESS_KEY_ID`, `ACCESS_SECRET_KEY` | Cloudflare R2 credentials for the `postgres-backup` bucket. The ExternalSecrets of the three Postgres clusters read it, and each cluster backs up under its own prefix.                                                                                                               |
+| `GitHub Repo Secrets`         | fields and files                     | CI. See [Secrets](#secrets).                                                                                                                                                                                                                                                          |
 
 ## CI setup
 
@@ -130,14 +118,14 @@ JSON
 
 One 1Password item, `GitHub Repo Secrets` in `homelab-k8s`, feeds every repo through `setup-repo-secrets.sh` (kept in the service template, which runs it for new services).
 
-| Secret | Holds | Goes to |
-| --- | --- | --- |
-| `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_AUDIENCE` | Tailscale federated credential | every repo |
-| `K8S_URL` | `https://192.168.50.203:6443`, reachable over Tailscale | every repo |
-| `K8S_SA_TOKEN` | file: `gha-deployer-token` Secret as YAML | every repo |
-| `INFRA_K8S_SA_TOKEN` | file in section `infra`: `gha-infra-token` Secret as YAML | this repo, as a `production` environment secret |
+| Secret                                    | Holds                                                     | Goes to                                         |
+| ---                                       | ---                                                       | ---                                             |
+| `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_AUDIENCE` | Tailscale federated credential                            | every repo                                      |
+| `K8S_URL`                                 | `https://192.168.50.203:6443`, reachable over Tailscale   | every repo                                      |
+| `K8S_SA_TOKEN`                            | file: `gha-deployer-token` Secret as YAML                 | every repo                                      |
+| `INFRA_K8S_SA_TOKEN`                      | file in section `infra`: `gha-infra-token` Secret as YAML | this repo, as a `production` environment secret |
 
-`azure/k8s-set-context` reads the whole Secret object, so the files are `kubectl get secret -o yaml` output. The script skips anything in the `infra` section or named `INFRA_*` unless `INCLUDE_INFRA=1`, so app repos never receive the cluster-admin token.
+`azure/k8s-set-context` reads the whole Secret object, so the files are `kubectl get secret -o yaml` output.
 
 ```bash
 umask 077; tmp=$(mktemp -d)
@@ -152,5 +140,3 @@ INCLUDE_INFRA=1 ../setup-repo-secrets.sh homelab
 ```
 
 To rotate a token, delete its Secret in `kube-system`, reapply `kubernetes/serviceaccounts`, and run the block above again. The old token stops working when you delete the Secret.
-
-The Tailscale credential trusts the OIDC subject `repo:oberwager@28853408/homelab@1188750354:environment:production`. Deploy and drift both send it, and the `repo:oberwager@28853408/*:environment:production` wildcard the app repos use already matches. Pull requests get no subject. If a job fails with `403` on the token exchange, the credential page shows the subject GitHub sent; add that string.
