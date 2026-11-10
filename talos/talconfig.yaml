@@ -20,10 +20,45 @@ patches:
         modules:
           - name: tun
   - |-
-    cluster:
-      apiServer:
-        auditPolicy:
-          apiVersion: audit.k8s.io/v1
-          kind: Policy
-          rules:
-            - level: Metadata
+    apiVersion: v1alpha1
+    kind: KubeAuditPolicyConfig
+    configuration:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+        - level: Metadata
+  # $$patch, not $patch: talhelper substitutes ${VAR} in this file before
+  # parsing YAML, and reads a bare $patch as a variable reference.
+  - |-
+    apiVersion: v1alpha1
+    kind: KubeFlannelCNIConfig
+    $$patch: delete
+  - |-
+    apiVersion: v1alpha1
+    kind: KubeProxyConfig
+    enabled: false
+  - |-
+    apiVersion: v1alpha1
+    kind: ResolverConfig
+    hostDNS:
+      enabled: true
+      forwardKubeDNSToHost: false
+  # delete + recreate, not a single patch: patching config.resources directly
+  # appends a second list entry instead of replacing the auto-generated one.
+  - |-
+    apiVersion: v1alpha1
+    kind: KubeEtcdEncryptionConfig
+    $$patch: delete
+  - |-
+    apiVersion: v1alpha1
+    kind: KubeEtcdEncryptionConfig
+    config:
+      resources:
+        - providers:
+            - secretbox:
+                keys:
+                  - name: key1
+                    secret: $TALOS_SECRETS_SECRETBOXENCRYPTIONSECRET
+            - identity: {}
+          resources:
+            - secrets

@@ -22,7 +22,7 @@ resources:
   - kube-state-metrics.yaml
   - alloy-rbac.yaml
   - alloy.yaml
-  - ingress.yaml
+  - httproute.yaml
   - external-secret.yaml
 configMapGenerator:
   - name: prometheus-config
