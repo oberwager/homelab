@@ -1,0 +1,8 @@
+# .240 is outside the DHCP pool (reserved on the router).
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: external
+spec:
+  blocks:
+    - cidr: 192.168.50.240/32

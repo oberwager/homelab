@@ -39,23 +39,6 @@ scrape_configs:
 
   # ---- Kubernetes infrastructure ----
 
-  # Nginx ingress controller metrics (port 10254, not declared as container port)
-  - job_name: nginx-ingress
-    kubernetes_sd_configs:
-      - role: pod
-        namespaces:
-          names: ["ingress-nginx"]
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_name]
-        action: keep
-        regex: controller
-      - source_labels: [__meta_kubernetes_pod_container_port_number]
-        action: keep
-        regex: "80"
-      - source_labels: [__meta_kubernetes_pod_host_ip]
-        target_label: __address__
-        replacement: ${1}:10254
-
   # Container resource metrics (CPU, memory, network per container)
   - job_name: kubelet-cadvisor
     scheme: https
