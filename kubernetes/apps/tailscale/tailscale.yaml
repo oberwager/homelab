@@ -65,6 +65,12 @@ spec:
         app: tailscale-subnet-router
     spec:
       serviceAccountName: tailscale
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: tailscale
           # Pinned by digest. Renovate keeps the tag and digest current. (The old
@@ -72,6 +78,10 @@ spec:
           # the node ran v1.96.5 before moving to v1.104.4.)
           image: ghcr.io/tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             # Persist state in a k8s secret so restarts don't re-register
             - name: TS_KUBE_SECRET
@@ -116,3 +126,9 @@ spec:
               memory: 64Mi
             limits:
               memory: 256Mi
+          volumeMounts:
+            - name: tailscale-run
+              mountPath: /var/run/tailscale
+      volumes:
+        - name: tailscale-run
+          emptyDir: {}
