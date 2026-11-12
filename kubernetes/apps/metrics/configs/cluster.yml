@@ -98,19 +98,24 @@ groups:
         annotations:
           summary: "DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} has pods on an old revision"
 
-      # Tracks the CronJob itself, not individual jobs (which rotate out)
+      # Tracks the CronJob itself, not individual jobs (which rotate out).
+      # Fires when the most recent scheduled run hasn't succeeded, so it works
+      # for any schedule frequency (every 2m or every 4 months).
       - alert: CronJobFailed
         expr: |
-          (time() - kube_cronjob_status_last_successful_time) > 600
-          and kube_cronjob_status_last_successful_time > 0
-        for: 5m
+          kube_cronjob_status_last_schedule_time
+            > kube_cronjob_status_last_successful_time
+        for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} hasn't succeeded in 10+ minutes"
+          summary: "CronJob {{ $labels.namespace }}/{{ $labels.cronjob }} last scheduled run hasn't succeeded"
 
+      # next_schedule_time in the past means the controller missed a run
       - alert: CronJobNotScheduled
-        expr: time() - kube_cronjob_next_schedule_time < -3600
+        expr: |
+          (time() - kube_cronjob_next_schedule_time) > 3600
+          and on(namespace, cronjob) kube_cronjob_spec_suspend == 0
         for: 10m
         labels:
           severity: warning
