@@ -6,7 +6,7 @@ Secrets live in 1Password, and the External Secrets Operator copies them into th
 |            |                                                                                                                                                     |
 | ---        | ---                                                                                                                                                 |
 | OS         | Talos, no SSH. [talhelper](https://github.com/budimanjojo/talhelper) renders the machine configs.                                                   |
-| Ingress    | ingress-nginx as a DaemonSet on host ports 80 and 443. cert-manager issues Let's Encrypt certs.                                                     |
+| Ingress    | Cilium Gateway API, with a floating VIP announced over L2 (not tied to one node's IP). cert-manager issues Let's Encrypt certs.                     |
 | Secrets    | External Secrets Operator reads 1Password Connect. A kustomize component patches the store onto every `ExternalSecret`.                             |
 | Network    | Tailscale subnet router and exit node. CI reaches the API server through it.                                                                        |
 | Data       | CloudNative-PG for Postgres, `local-path` storage with a Retain policy. No backup of the node itself since reprovisioning is faster than restoring. |
@@ -26,11 +26,10 @@ renovate.json
 `main` needs a PR with passing `manifests` and `gitleaks` checks. To preview a change before you merge it:
 
 ```bash
-KUBECTL_EXTERNAL_DIFF=$PWD/.github/scripts/kdiff \
-  kubectl diff -k kubernetes/ --server-side --force-conflicts
+just k8s-diff
 ```
 
-Applies are server-side because the operator CRDs exceed the annotation size that client-side apply needs.
+Applies are server-side because the operator CRDs exceed the annotation size that client-side apply needs. Cilium is a Helm chart, so `kubectl apply -k` won't work; the justfile and CI use `kubectl kustomize --enable-helm | kubectl apply -f -`.
 
 App repos build, scan, sign (keyless Cosign) and deploy through a shared pipeline, for example [d2-live](https://github.com/oberwager/d2-live/blob/main/.github/workflows/docker-publish.yml).
 
@@ -41,42 +40,22 @@ App repos build, scan, sign (keyless Cosign) and deploy through a shared pipelin
 
 ## Bootstrap
 
-You need `talosctl`, `talhelper`, `op` (signed in to the `homelab-k8s` vault), `yq`, `jq`, `kubectl` and `gh`.
+You need `talosctl`, `talhelper`, `op` (signed in to the `homelab-k8s` vault), `yq`, `jq`, `kubectl`, `helm`, `kubeconform`, `gh` and [`just`](https://github.com/casey/just). `just` (no arguments) lists every recipe.
 
 ```bash
-# 1. Boot Talos on the node: https://www.talos.dev/latest/talos-guides/install/
+# 1. Boot Talos on each node: https://www.talos.dev/latest/talos-guides/install/
+#    and list them (hostname, IP, controlPlane) under `nodes:` in talos/talconfig.yaml
 
-# 2. Generate the Talos secrets into 1Password
-scripts/talos-secrets-to-1password.sh
+# 2. Generate the Talos secrets into 1Password (first cluster only -- never rerun this against an existing one)
+just talos-secrets-bootstrap
 
-# 3. Render the machine configs, with secrets pulled from 1Password
-op run --env-file .env.tpl --no-masking -- \
-  talhelper genconfig --config-file talos/talconfig.yaml \
-    --out-dir talos/.rendered --secret-file talos/talsecret.yaml
-
-# 4. Apply the config (once per node), then bootstrap
-talosctl apply-config --talosconfig talos/.rendered/talosconfig \
-  --nodes <ip> --file talos/.rendered/<hostname>.yaml
-talosctl bootstrap --talosconfig talos/.rendered/talosconfig --nodes <ip>
-
-# 5. Fetch the kubeconfig
-talosctl kubeconfig --talosconfig talos/.rendered/talosconfig
-
-# 6. Bootstrap the secrets backend
-op connect server create homelab-k8s --vaults homelab-k8s
-kubectl apply -f kubernetes/apps/external-secrets/00-namespace.yaml
-kubectl -n external-secrets create secret generic op-credentials \
-  --from-file=1password-credentials.json
-rm 1password-credentials.json
-op connect token create homelab-k8s --server homelab-k8s --vault homelab-k8s,r \
-  | tr -d '\n' \
-  | kubectl -n external-secrets create secret generic op-access-token --from-file=token=/dev/stdin
-
-# 7. Apply everything
-kubectl apply -k kubernetes/ --server-side --force-conflicts
+# 3. Configure the nodes, bootstrap etcd, set up the secrets backend, apply everything
+just bootstrap
 ```
 
-Step 7 also creates the CI service accounts. Every later apply runs from CI.
+`just bootstrap` runs `talos-bootstrap`, `secrets-bootstrap` and `k8s-bootstrap` in order, and each can be run on its own if one step fails. `k8s-bootstrap` applies the CRDs first and then retries the full tree while Cilium, cert-manager and external-secrets come up. It also creates the CI service accounts.
+
+Every later apply runs from CI. For changes by hand, run `just k8s-diff`, then `just k8s-apply`. Talos changes work the same way with `just talos-diff` and `just talos-apply`. Both act on every node in `talconfig.yaml`, or on one if you pass its hostname or IP, e.g. `just talos-diff talos-3k8-fga`.
 
 ### 1Password items
 
@@ -97,26 +76,12 @@ Everything lives in the `homelab-k8s` vault.
 Create the `production` environment limited to `main`, and protect `main`. Add no required reviewers to `production`, since the nightly drift job runs in it too. Then install the Renovate GitHub App.
 
 ```bash
-printf '%s' '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' \
-  | gh api -X PUT repos/<owner>/homelab/environments/production --input -
-gh api -X POST repos/<owner>/homelab/environments/production/deployment-branch-policies \
-  -f name=main -f type=branch
-
-gh api -X PUT repos/<owner>/homelab/branches/main/protection --input - <<'JSON'
-{
-  "required_status_checks": { "strict": false, "contexts": ["manifests", "gitleaks"] },
-  "enforce_admins": false,
-  "required_pull_request_reviews": { "required_approving_review_count": 0 },
-  "restrictions": null,
-  "allow_force_pushes": false,
-  "allow_deletions": false
-}
-JSON
+just ci-setup
 ```
 
 ### Secrets
 
-One 1Password item, `GitHub Repo Secrets` in `homelab-k8s`, feeds every repo through `setup-repo-secrets.sh` (kept in the service template, which runs it for new services).
+One 1Password item, `GitHub Repo Secrets` in `homelab-k8s`, feeds every repo through `scripts/setup-repo-secrets.sh`. The service template has its own copy and runs it for new services.
 
 | Secret                                    | Holds                                                     | Goes to                                         |
 | ---                                       | ---                                                       | ---                                             |
