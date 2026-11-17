@@ -47,7 +47,7 @@ jobs:
       # Server-side: the CNPG and cert-manager CRDs exceed the 256 KiB
       # last-applied annotation that client-side apply needs.
       - name: Apply
-        run: kubectl apply -k kubernetes/ --server-side --force-conflicts
+        run: kubectl kustomize --enable-helm kubernetes/ | kubectl apply -f - --server-side --force-conflicts
 
       # `kubectl apply` returns once the objects are accepted. A rollout can still
       # stall afterwards (admission denied, image pull error, crash loop) while the
@@ -55,7 +55,7 @@ jobs:
       # the run if one doesn't finish. yq and jq are preinstalled on ubuntu-latest.
       - name: Wait for rollouts
         run: |
-          kubectl kustomize kubernetes/ \
+          kubectl kustomize --enable-helm kubernetes/ \
             | yq -N -r 'select(.kind == "Deployment" or .kind == "StatefulSet" or .kind == "DaemonSet")
                      | .kind + "/" + .metadata.name + " " + (.metadata.namespace // "default")' \
             | grep -E '^(Deployment|StatefulSet|DaemonSet)/' | sort -u > workloads.txt

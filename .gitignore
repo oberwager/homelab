@@ -1,9 +1,12 @@
 talos/.rendered/
 
-# real env files; only .env.tpl (op:// references) is tracked
+# .env.tpl (op:// references) is tracked
 .env
 
-# Local database backups (never commit)
+# db backups
 *.db.bak*
 *.db-wal
 *.db-shm
+
+# helm charts kustomize pulls
+kubernetes/**/charts/

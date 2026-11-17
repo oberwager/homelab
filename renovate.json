@@ -17,7 +17,7 @@
   },
   "customManagers": [
     {
-      "description": "Remote kustomize resources pinned to a release tag (cert-manager, external-secrets, local-path)",
+      "description": "Remote kustomize resources pinned to a release tag (cert-manager, external-secrets, local-path, gateway-api). The Cilium Helm chart in kubernetes/apps/cilium is picked up by the built-in kustomize manager",
       "customType": "regex",
       "managerFilePatterns": [
         "/^kubernetes/.+/kustomization\\.ya?ml$/"
@@ -81,12 +81,13 @@
       "automerge": true
     },
     {
-      "description": "Operators ship CRD changes, Talos and Kubernetes need a manual upgrade step, and Tailscale is the pod CI deploys through: review every one",
+      "description": "Operators ship CRD changes, Cilium is the CNI (a bad upgrade takes down all pod networking), Talos and Kubernetes need a manual upgrade step, and Tailscale is the pod CI deploys through: review every one",
       "matchPackageNames": [
         "/cert-manager/",
         "/external-secrets/",
         "/cloudnative-pg/",
-        "/ingress-nginx/",
+        "/cilium/",
+        "/gateway-api/",
         "siderolabs/talos",
         "kubernetes/kubernetes",
         "/tailscale/"

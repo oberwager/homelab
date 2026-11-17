@@ -38,8 +38,9 @@ jobs:
           # Hides last-applied/generation bookkeeping and Secrets from the output.
           KUBECTL_EXTERNAL_DIFF: ${{ github.workspace }}/.github/scripts/kdiff
         run: |
+          kubectl kustomize --enable-helm kubernetes/ > rendered.yaml
           set +e
-          kubectl diff -k kubernetes/ --server-side --force-conflicts > diff.txt 2> diff.err
+          kubectl diff -f rendered.yaml --server-side --force-conflicts > diff.txt 2> diff.err
           code=$?
           set -e
           if [ "$code" -gt 1 ]; then
