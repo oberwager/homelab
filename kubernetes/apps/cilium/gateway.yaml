@@ -46,6 +46,51 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # <name>.lucas.tools app
+    - name: lucas-tools-https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.lucas.tools"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: wildcard-lucas-tools-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: d2-argus-https
+      protocol: HTTPS
+      port: 443
+      hostname: d2.argus.lucas.tools
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: d2-argus-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: trivio-me-https
+      protocol: HTTPS
+      port: 443
+      hostname: trivio.me
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: trivio-me-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: ecobux-api-https
+      protocol: HTTPS
+      port: 443
+      hostname: api.ecobux.org
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: ecobux-api-tls
+      allowedRoutes:
+        namespaces:
+          from: All
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
